@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MelodyStream Player</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 700px; margin: 30px auto; padding: 20px; background: #121212; color: #fff; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        input, button { display: block; width: 100%; margin: 10px 0; padding: 10px; box-sizing: border-box; border-radius: 4px; border: 1px solid #333; }
+        input { background: #2a2a2a; color: white; }
+        button { background: #1db954; color: white; font-weight: bold; cursor: pointer; border: none; }
+        .song-item { display: flex; justify-content: space-between; align-items: center; background: #282828; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .row { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>🎵 MelodyStream Web App</h2>
+
+    <!-- Search Section -->
+    <div class="card">
+        <h3>🔍 Search Songs</h3>
+        <div class="row">
+            <input type="text" id="searchInput" placeholder="Search by song name or artist...">
+            <button style="width: 120px;" onclick="searchSongs()">Search</button>
+            <button style="width: 100px; background: #555;" onclick="loadSongs()">Reset</button>
+        </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="card">
+        <h3>📤 Upload New Song</h3>
+        <input type="text" id="title" placeholder="Song Title" required>
+        <input type="text" id="artist" placeholder="Artist Name" required>
+        <input type="text" id="album" placeholder="Album Name">
+        <input type="file" id="file" accept="audio/*" required>
+        <button onclick="uploadSong()">Upload Song</button>
+    </div>
+
+    <!-- Songs List -->
+    <div class="card">
+        <h3>🎶 Songs Library</h3>
+        <div id="songsList">Loading songs...</div>
+    </div>
+
+    <!-- Audio Player -->
+    <div class="card">
+        <h3>▶ Now Playing</h3>
+        <audio id="audioPlayer" controls style="width: 100%;"></audio>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        async function loadSongs() {
+            const res = await fetch(`${API_URL}/songs`);
+            const songs = await res.json();
+            displaySongs(songs);
+        }
+
+        function displaySongs(songs) {
+            const listDiv = document.getElementById('songsList');
+            listDiv.innerHTML = '';
+            if (songs.length === 0) {
+                listDiv.innerHTML = '<p>No songs found!</p>';
+                return;
+            }
+            songs.forEach(song => {
+                listDiv.innerHTML += `
+                    <div class="song-item">
+                        <div>
+                            <strong>${song.title}</strong> - ${song.artist}
+                        </div>
+                        <button style="width: auto;" onclick="playSong(${song.id})">Play ▶</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function searchSongs() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) return loadSongs();
+            const res = await fetch(`${API_URL}/songs/search?q=${encodeURIComponent(query)}`);
+            const songs = await res.json();
+            displaySongs(songs);
+        }
+
+        async function uploadSong() {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('artist', document.getElementById('artist').value);
+            formData.append('album', document.getElementById('album').value);
+            formData.append('file', document.getElementById('file').files[0]);
+
+            await fetch(`${API_URL}/upload-song`, {
+                method: 'POST',
+                body: formData
+            });
+
+            alert("Song Uploaded Successfully!");
+            document.getElementById('title').value = '';
+            document.getElementById('artist').value = '';
+            document.getElementById('album').value = '';
+            document.getElementById('file').value = '';
+            loadSongs();
+        }
+
+        function playSong(id) {
+            const player = document.getElementById('audioPlayer');
+            player.src = `${API_URL}/stream/${id}`;
+            player.play();
+        }
+
+        loadSongs();
+    </script>
+</body>
+</html>
