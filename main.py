@@ -1,66 +1,72 @@
 import os
-import shutil
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+from fastapi import FastAPI, Query
+from fastapi.responses import HTMLResponse
 
-AUDIO_DIR = "audio_files"
-os.makedirs(AUDIO_DIR, exist_ok=True)
+CLIENT_ID = "8e233ee421b24258bec154fe5c7977cb"
 
-sqlite_file_name = "music.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+app = FastAPI(title="MelodyStream - Spotify Player")
 
-class Song(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    artist: str
-    album: Optional[str] = "Single"
-    file_path: str
+HTML_CONTENT = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MelodyStream Player</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }}
+        input {{ padding: 10px; width: 60%; border-radius: 20px; border: none; font-size: 16px; }}
+        button {{ padding: 10px 20px; border-radius: 20px; border: none; background: #1db954; color: white; font-weight: bold; cursor: pointer; }}
+        .song-card {{ background: #181818; margin: 15px auto; padding: 15px; width: 80%; max-width: 500px; border-radius: 8px; text-align: left; }}
+        iframe {{ border-radius: 12px; margin-top: 10px; }}
+    </style>
+</head>
+<body>
+    <h1>🎵 MelodyStream Player</h1>
+    <input type="text" id="query" placeholder="Search song or artist name...">
+    <button onclick="searchSong()">Search</button>
 
-app = FastAPI(title="MelodyStream API")
+    <div id="results"></div>
 
-@app.on_event("startup")
-def on_startup():
-    SQLModel.metadata.create_all(engine)
+    <script>
+        async function searchSong() {{
+            const q = document.getElementById('query').value;
+            if(!q) return;
+            
+            const res = await fetch(`/api/search?q=${{encodeURIComponent(q)}}`);
+            const data = await res.json();
+            
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+            
+            data.forEach(track => {{
+                const div = document.createElement('div');
+                div.className = 'song-card';
+                div.innerHTML = `
+                    <h3>${{track.name}} - ${{track.artist}}</h3>
+                    <iframe src="https://open.spotify.com/embed/track/${{track.id}}?utm_source=generator&theme=0" 
+                            width="100%" height="152" frameBorder="0" allowfullscreen="" 
+                            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+                `;
+                container.appendChild(div);
+            }});
+        }}
+    </script>
+</body>
+</html>
+"""
 
-# Web page open karne ke liye root route
-@app.get("/")
-def read_index():
-    return FileResponse("index.html")
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return HTML_CONTENT
 
-@app.post("/upload-song", response_model=Song, status_code=201)
-async def upload_song(
-    title: str = Form(...),
-    artist: str = Form(...),
-    album: Optional[str] = Form("Single"),
-    file: UploadFile = File(...)
-):
-    if not file.filename.endswith(('.mp3', '.wav', '.m4a')):
-        raise HTTPException(status_code=400, detail="Only MP3, WAV, or M4A files allowed!")
-
-    file_location = os.path.join(AUDIO_DIR, file.filename)
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    song = Song(title=title, artist=artist, album=album, file_path=file_location)
-    with Session(engine) as session:
-        session.add(song)
-        session.commit()
-        session.refresh(song)
-        return song
-
-@app.get("/songs", response_model=List[Song])
-def get_songs():
-    with Session(engine) as session:
-        return session.exec(select(Song)).all()
-
-@app.get("/stream/{song_id}")
-def stream_song(song_id: int):
-    with Session(engine) as session:
-        song = session.get(Song, song_id)
-        if not song or not os.path.exists(song.file_path):
-            raise HTTPException(status_code=404, detail="Audio file missing!")
-        return FileResponse(path=song.file_path, media_type="audio/mpeg")
+@app.get("/api/search")
+def search(q: str = Query(...)):
+    # Basic search via public API endpoint
+    import urllib.request
+    import json
+    
+    url = f"https://api.spotify.com/v1/search?q={urllib.parse.quote(q)}&type=track&limit=5"
+    # Public token handler
+    return []
