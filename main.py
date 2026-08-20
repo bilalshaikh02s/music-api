@@ -1,17 +1,10 @@
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+import urllib.parse
+import urllib.request
+import json
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
-CLIENT_ID = "8e233ee421b24258bec154fe5c7977cb"
-CLIENT_SECRET = "8e233ee421b24258bec154fe5c7977cb"
-
-app = FastAPI(title="MelodyStream - Spotify Player")
-
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET
-))
+app = FastAPI(title="MelodyStream Player")
 
 HTML_CONTENT = """
 <!DOCTYPE html>
@@ -23,8 +16,10 @@ HTML_CONTENT = """
         body { font-family: Arial, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
         input { padding: 12px; width: 60%; border-radius: 20px; border: none; font-size: 16px; margin-right: 10px; }
         button { padding: 12px 24px; border-radius: 20px; border: none; background: #1db954; color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
-        .song-card { background: #181818; margin: 15px auto; padding: 15px; width: 80%; max-width: 500px; border-radius: 12px; text-align: left; }
-        iframe { border-radius: 12px; margin-top: 10px; }
+        .song-card { background: #181818; margin: 15px auto; padding: 15px; width: 80%; max-width: 500px; border-radius: 12px; text-align: left; display: flex; align-items: center; gap: 15px; }
+        .song-card img { border-radius: 8px; width: 80px; height: 80px; object-fit: cover; }
+        .song-info { flex: 1; }
+        audio { width: 100%; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -59,10 +54,12 @@ HTML_CONTENT = """
                     const div = document.createElement('div');
                     div.className = 'song-card';
                     div.innerHTML = `
-                        <h3>${track.name} - ${track.artist}</h3>
-                        <iframe src="https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0" 
-                                width="100%" height="152" frameBorder="0" allowfullscreen="" 
-                                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+                        <img src="${track.image}" alt="cover">
+                        <div class="song-info">
+                            <h3 style="margin:0 0 5px 0; font-size: 16px;">${track.name}</h3>
+                            <p style="margin:0; color: #b3b3b3; font-size: 14px;">${track.artist}</p>
+                            <audio controls src="${track.preview_url}"></audio>
+                        </div>
                     `;
                     container.appendChild(div);
                 });
@@ -82,14 +79,18 @@ def home():
 @app.get("/api/search")
 def search(q: str = Query(...)):
     try:
-        results = sp.search(q=q, limit=5, type='track')
-        tracks = []
-        for item in results['tracks']['items']:
-            tracks.append({
-                "id": item['id'],
-                "name": item['name'],
-                "artist": item['artists'][0]['name']
-            })
-        return tracks
-    except Exception:
+        url = f"https://itunes.apple.com/search?term={urllib.parse.quote(q)}&entity=song&limit=6"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode())
+            results = []
+            for item in res_data.get('results', []):
+                results.append({
+                    "name": item.get("trackName"),
+                    "artist": item.get("artistName"),
+                    "preview_url": item.get("previewUrl"),
+                    "image": item.get("artworkUrl100")
+                })
+            return results
+    except Exception as e:
         return []
